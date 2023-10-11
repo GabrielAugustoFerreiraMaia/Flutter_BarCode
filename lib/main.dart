@@ -15,12 +15,12 @@ class MyApp extends StatelessWidget {
       ),
       routes: {
         '/': (context) => HomePage(),
+        '/productList': (context) => ProductListPage(),
         '/addProduct': (context) {
           final String? barcode =
               ModalRoute.of(context)?.settings.arguments as String?;
-          return AddProductPage(barcode: barcode!);
+          return AddProductPage(barcode: barcode ?? '');
         },
-        '/productList': (context) => ProductListPage(),
       },
     );
   }
@@ -46,12 +46,14 @@ class _HomePageState extends State<HomePage> {
           children: <Widget>[
             Text('Scan Result: $barcode'),
             SizedBox(height: 20.0),
-            RaisedButton(
+            ElevatedButton(
               child: Text('Scan Barcode'),
-              onPressed: _scanBarcode,
+              onPressed: () {
+                _scanBarcode(context);
+              },
             ),
             SizedBox(height: 20.0),
-            RaisedButton(
+            ElevatedButton(
               child: Text('Add Product'),
               onPressed: () {
                 Navigator.push(
@@ -62,7 +64,7 @@ class _HomePageState extends State<HomePage> {
                 );
               },
             ),
-            RaisedButton(
+            ElevatedButton(
               child: Text('Product List'),
               onPressed: () {
                 Navigator.pushNamed(context, '/productList');
@@ -74,7 +76,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  Future<void> _scanBarcode() async {
+  Future<void> _scanBarcode(BuildContext context) async {
     try {
       String barcode = await FlutterBarcodeScanner.scanBarcode(
         '#ff6666',
@@ -85,6 +87,12 @@ class _HomePageState extends State<HomePage> {
       setState(() {
         this.barcode = barcode;
       });
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => AddProductPage(barcode: this.barcode),
+        ),
+      );
     } catch (e) {
       print('Error: $e');
     }
@@ -105,18 +113,24 @@ class _AddProductPageState extends State<AddProductPage> {
   TextEditingController nameController = TextEditingController();
   TextEditingController priceController = TextEditingController();
   TextEditingController descriptionController = TextEditingController();
-  BuildContext? _pageContext;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance!.addPostFrameCallback((_) {
-      final routeArguments = ModalRoute.of(_pageContext!)?.settings.arguments;
-      if (routeArguments != null && routeArguments is String) {
-        String barcode = routeArguments;
-        barcodeController.text = barcode;
+      if (widget.barcode.isNotEmpty) {
+        barcodeController.text = widget.barcode;
       }
     });
+  }
+
+  @override
+  void dispose() {
+    barcodeController.dispose();
+    nameController.dispose();
+    priceController.dispose();
+    descriptionController.dispose();
+    super.dispose();
   }
 
   @override
@@ -154,10 +168,10 @@ class _AddProductPageState extends State<AddProductPage> {
               ),
             ),
             SizedBox(height: 20.0),
-            RaisedButton(
+            ElevatedButton(
               child: Text('Save'),
               onPressed: () {
-                _saveProduct(context);
+                _saveProduct(context); // Passe o contexto como parâmetro
               },
             ),
           ],
@@ -175,10 +189,26 @@ class _AddProductPageState extends State<AddProductPage> {
     // Open database
     Database database = await openDatabase(
       join(await getDatabasesPath(), 'products_database.db'),
-      onCreate: (db, version) {
-        return db.execute(
-          'CREATE TABLE IF NOT EXISTS products(id INTEGER PRIMARY KEY AUTOINCREMENT, barcode TEXT, name TEXT, price TEXT, description TEXT)',
-        );
+      onCreate: (db, version) async {
+        // Verificar se a tabela já existe
+        bool tableExists = await db
+                .rawQuery(
+                    "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'products')")
+                .then((result) => Sqflite.firstIntValue(result)) ==
+            1;
+
+        // Criar tabela somente se ela não existir
+        if (!tableExists) {
+          await db.execute('''
+        CREATE TABLE products(
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          barcode TEXT,
+          name TEXT,
+          price TEXT,
+          description TEXT
+        )
+      ''');
+        }
       },
       version: 1,
     );
@@ -199,7 +229,7 @@ class _AddProductPageState extends State<AddProductPage> {
     await database.close();
 
     // Navigate back to home page
-    Navigator.pop(context);
+    Navigator.of(context).pop();
   }
 }
 

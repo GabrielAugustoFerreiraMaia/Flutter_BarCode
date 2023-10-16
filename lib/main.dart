@@ -78,24 +78,66 @@ class _HomePageState extends State<HomePage> {
 
   Future<void> _scanBarcode(BuildContext context) async {
     try {
-      String barcode = await FlutterBarcodeScanner.scanBarcode(
+      String scannedBarcode = await FlutterBarcodeScanner.scanBarcode(
         '#ff6666',
         'Cancel',
         true,
         ScanMode.BARCODE,
       );
+
+      // Check if the scanned barcode already exists in the database
+      bool isProductExists = await _checkProductExists(scannedBarcode);
+
       setState(() {
-        this.barcode = barcode;
+        barcode = scannedBarcode;
       });
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => AddProductPage(barcode: this.barcode),
-        ),
-      );
+
+      if (isProductExists) {
+        showDialog(
+          context: context,
+          builder: (BuildContext context) {
+            return AlertDialog(
+              title: Text('Produto já cadastrado'),
+              content: Text(
+                  'O produto com o código de barras $scannedBarcode já está cadastrado.'),
+              actions: <Widget>[
+                ElevatedButton(
+                  child: Text('OK'),
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      } else {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => AddProductPage(barcode: barcode),
+          ),
+        );
+      }
     } catch (e) {
       print('Error: $e');
     }
+  }
+
+  Future<bool> _checkProductExists(String barcode) async {
+    Database database = await openDatabase(
+      join(await getDatabasesPath(), 'products_database.db'),
+    );
+
+    List<Map<String, dynamic>> productList = await database.query(
+      'products',
+      where: 'barcode = ?',
+      whereArgs: [barcode],
+    );
+
+    await database.close();
+
+    return productList.isNotEmpty;
   }
 }
 
